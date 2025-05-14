@@ -1,7 +1,7 @@
 ## OPMS Control System
 
 ### Overview
-This project implements a **vehicle access control system** for a parking lot using an **8051 microcontroller** programmed in assembly language. The system manages vehicle entry by verifying IDs entered via an RFID card reader or keypad, categorizes vehicles into five types (A, B, C, D, E), tracks available parking slots, and controls a gate. It includes user feedback through indicator lights and voice prompts, and communicates with an exit microcontroller to update slot counts when vehicles leave.
+This project implements a **OPMS control system** for a parking lot using an **8051 microcontroller** programmed in assembly language. The system manages vehicle entry by verifying IDs entered via an RFID card reader or keypad, categorizes vehicles into five types (A, B, C, D, E), tracks available parking slots, and controls a gate. It includes user feedback through indicator lights and voice prompts, and communicates with an exit microcontroller to update slot counts when vehicles leave.
 
 ### Features
 - **Vehicle Detection**: Detects arriving vehicles using a sensor.
