@@ -84,8 +84,3 @@ This project implements a **vehicle access control system** for a parking lot us
 - **Slot Limits**: Modify `INITIALIZE_NO_SLOTS` to change slot counts.
 - **ID Database**: Update ROM data (`0x1010`–`0x1800`) to add/remove valid IDs.
 
-### Contributing
-Feel free to fork this repository, suggest improvements, or add features like LCD displays, logging, or advanced error handling. Submit pull requests or open issues for bugs and ideas.
-
-### License
-This project is licensed under the MIT License. See the `LICENSE` file for details.
