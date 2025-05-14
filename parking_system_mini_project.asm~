@@ -1,0 +1,865 @@
+ORG 0003H
+MOV R7,#0FFH ; Raising the flag since the user started entering the id
+CLR IE.0  ;  Disable intterupt
+MOV R0,#50    ; assign a RAM address to store the customer id values
+MOV R5,#2	; character length after first character
+CLR A           ; clear the accumulator
+MOV A, P2       ; load the value in the port2 to accumulator, this is the first character of the customer ID
+MOV @R0,A	; move the value in the accumulator to the memory location stored in R0 register
+WAIT_4:
+INC R0          ; increment the register R0 to the next memory address
+
+WAIT_3: JB P3.2 ,WAIT_3
+MOV A, P2 
+MOV @R0,A
+DJNZ R5, WAIT_4
+RETI
+
+
+ORG 0213H
+CLR P3.4 ; select communication with exit micro controller
+SETB P1.6 ; sent a high signal to say exit micro controller to sent data
+WAIT_100: JNB RI ,WAIT_100 
+MOV A,SBUF
+CLR RI 		; clear RI flag 
+CLR P1.6 ; stop sending the signal to say exit microcontroller to sent data
+CJNE A,#01000001B,NEXT_VEHICLE_TYPE_B ;compare that the  value is 'A'
+MOV R1,#60 ;memory location where vehcle type A count is stored
+MOV A,@R1;  
+ADD A,#1; increment count
+;Display slot
+RET
+
+NEXT_VEHICLE_TYPE_B:
+CJNE A,#01000010B,NEXT_VEHICLE_TYPE_C ;compare that the  value is 'B'
+MOV R1,#61 ;memory location where vehcle type B count is stored
+MOV A,@R1;  
+ADD A,#1; increment count
+;Display slot
+RET
+
+NEXT_VEHICLE_TYPE_C:
+CJNE A,#01000011B,NEXT_VEHICLE_TYPE_D ;compare that the  value is 'C'
+MOV R1,#62 ;memory location where vehcle type C count is stored
+MOV A,@R1;  
+ADD A,#1; increment count
+;Display slot
+RET
+NEXT_VEHICLE_TYPE_D:
+CJNE A,#01000100B,NEXT_VEHICLE_TYPE_E;compare that the  value is 'D'
+MOV R1,#63 ;memory location where vehcle type D count is stored
+MOV A,@R1;  
+ADD A,#1; increment count
+;Display slot
+RET
+NEXT_VEHICLE_TYPE_E:
+MOV R1,#64 ;memory location where vehcle type E count is stored
+MOV A,@R1;  
+ADD A,#1; increment count
+;Display slot
+RET
+RETI
+
+
+
+
+
+ORG 0023H      ;serial intterupt
+MOV R7,#0FFH  ; Raising the flag since card is tapped
+CLR IE.4      ;  Disable serial intterupt
+MOV R0,#50    ; assign a RAM address to store the RFID card values
+MOV R5,#2	; character length after first character
+CLR A           ; clear the accumulator
+
+MOV A,SBUF    ; load the value in the sbuf register to accumulator, this is the first character of the customer ID
+MOV @R0,A	; move the value in the accumulator to the memory location stored in R0 register
+WAIT_2:
+INC R0          ; increment the register R0 to the next memory address
+CLR RI 		; clear RI flag for next data or charcter
+
+WAIT_1: JNB RI ,WAIT_1 
+MOV A,SBUF
+MOV @R0,A
+DJNZ R5, WAIT_2
+CLR RI 		; clear RI flag 
+RETI
+
+
+
+
+
+
+
+
+
+ORG 500H
+       ACALL INITIALIZE_NO_SLOTS
+       ACALL SERIAL_TIMER_START
+MAIN:
+       ACALL VEHICLE_DETECT_1
+       ACALL SPEAKER_WELCOME_TAP_CARD_VOICE
+       ACALL GREEN_INDICATOR_LIGHT
+       ACALL CARD_READER_OR_KEYPAD
+         	
+SJMP MAIN
+
+
+
+VEHICLE_DETECT_1:
+SETB P3.3 ; make INT1 port an input
+MOV IE, #10000100B ; Enable external interrupt1
+SETB P1.0             ; set  1.0 as input pin
+LOOP1: JB P1.0, LOOP1 ; A - loop until a vehicle is detected
+RET
+
+
+SPEAKER_WELCOME_TAP_CARD_VOICE: ;G
+SETB P1.1	; Assuming that voice_1("WELCOME PLEASE TAP YOUR CARD") 
+CLR P1.2        ;      is played when pl.1 = 1 and p1.2 = 0  
+SETB P1.3	; Play the voice_1
+RET
+
+
+GREEN_INDICATOR_LIGHT: ; K
+SETB P1.4       ; Turn on the green light
+RET
+
+
+CARD_READER_OR_KEYPAD: ; B
+SETB P3.0 ; set   P3.0 as input pin
+MOV IE, #10010000B ; Enabling Serial interrupt 
+MOV R7,00H ; Assigning a flag register to raise when a user has  tapped the card
+SETB P3.4 ; Activate the RFID reader by selecting it using the multiplexer, assuming 1 as the RFID reader
+ACALL DELAY_5S_VERIFY_ACCESS 
+ 
+RET
+
+
+
+
+
+
+DELAY_5S_VERIFY_ACCESS:
+
+MOV R3, #35
+L3: MOV R2,#255
+L2: MOV R1,#255
+L1: DJNZ R1,L1
+CJNE R7,#0FFH,VERIFY_ACCESS_FOR_RFID ; If the flag is raised then jump to verify access
+DJNZ R2,L2
+DJNZ R3,L3
+ACALL SPEAKER_ENTER_CUSTOMER_ID_VOICE
+
+SETB P3.2 ; L , set P3.2 as input pin
+MOV IE, #10000001B ; Enabling external0 interrupt 
+MOV R7,00H ; Assigning a flag register to raise when a user has enterd customer id
+MOV P2,#00FH ; make first 4 bits of port2 as input
+ACALL  DELAY_10S_VERIFY_ACCESS
+
+VERIFY_ACCESS_FOR_RFID: 
+ACALL VERIFY_ACCESS  
+RET
+
+
+
+DELAY_10S_VERIFY_ACCESS:
+MOV R3, #70
+L6: MOV R2,#255
+L5: MOV R1,#255
+L4: DJNZ R0,L1
+CJNE R7,#0FFH,VERIFY_ACCESS_FOR_KEYPAD  ; If the flag is raised then jump to verify access
+DJNZ R2,L5
+DJNZ R3,L6
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+VERIFY_ACCESS_FOR_KEYPAD:
+ACALL VERIFY_ACCESS
+RET
+
+
+SPEAKER_ENTER_CUSTOMER_ID_VOICE: ;G
+CLR P1.1	; Assuming that voice_1("Enter your Customer ID") 
+SETB P1.2        ;      is played when pl.1 = 0 and p1.2 = 1 
+SETB P1.3	; Play the voice_1
+RET
+
+
+RED_INDICATOR_LIGHT: ; E
+SETB P1.4       ; Turn on the red light
+RET
+
+SPEAKER_WARNING_TONE: ;G
+SETB P1.1	; Assuming that warning tone
+SETB P1.2       ; is played when pl.1 = 1 and p1.2 = 1  
+SETB P1.3	; Play the warning tone
+RET
+
+
+
+
+
+
+VERIFY_ACCESS:
+
+MOV DPTR ,#1000H ; This is the location where the vehicle category is stored
+MOV R0,50         ; move the RAM location where the customer id enterd or RFID tage of cutomer is stored
+
+
+
+CLR A             ; clear the accumlator
+MOVC A,@A+DPTR    ; acess the ROM location where vehicle catergory is stored by The DPTR register and store that value in the accumulator
+MOV B,@R0         ; load the content inside RAM location where the customer id enterd or RFID tage of cutomer is stored into B register
+CJNE A,B,VEHICLE_TYPE_B ; check if the fisrt digit of the ID which is the vehicle type is A, else jump location of vehicle_type_B
+MOV R2,50         ; load the maximium ID counts registerd for vehcle type A 
+
+MOV DPTR, #1010H ; This is the location where the customer IDS related to vehicle type A is stored, load that address to DPTR register
+
+lOOP4:
+MOV R3,#00H 	; a flag register if the first digit is correct
+MOV R4, #00H	; a flag register if the second digit is correct
+CLR A              ; Clear the accumulator
+MOVC A,@A+DPTR	   ; load customer ids second character  to accumulator
+INC R0              ;increment register ro to acess the second character of the entered ID
+MOV B,@R0           ; load the second character to B register
+CJNE A,B, NEXT_DIGIT_A
+MOV R3, #0FFH ; raise the flag since first digit match with the entered customer ids first digit
+
+NEXT_DIGIT_A: 
+INC DPTR
+INC R0
+CLR A
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B, NEXT_ID_A
+MOV R4, #0FFH ; raise the flag since second digit match with the entered customer ids second digit
+
+CLR A
+MOV A, R3
+ANL A,R4
+CJNE A, #0FFH,NEXT_ID_A
+
+MOV R1, #60 ; RAM location of total count of A
+CLR A
+MOV A, @R1 ;Move the total count to acumulator
+
+CJNE A,#40,OPEN_GATE_A
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+OPEN_GATE_A: 
+SUBB A,#1
+MOV @R1,A
+CLR A
+SETB P2.7
+CLR P2.6
+LOOP_10: JB P3.6,lOOP_10
+CLR P2.7
+ACALL DELAY_GATE_OPENING_TIME_A
+SETB P2.6
+LOOP_11: JB P3.7,lOOP_11
+CLR P2.6
+;ACALL DISPLAY SLOTS
+CLR P1.4 ;turn off green bulb
+;ACALL ARRIVAL_TIME_STAMP
+RET
+
+NEXT_ID_A:
+DEC R0
+DEC R0 
+INC DPTR
+DJNZ R2, LOOP4 
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+VEHICLE_TYPE_B: 
+INC DPTR
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B,VEHICLE_TYPE_C
+MOV R2,30
+MOV R3,#00H ; a flag register if the first digit is correct
+MOV R4, #00H; a flag register if the second digit is correct
+MOV DPTR, #1150H
+
+lOOP5:
+CLR A
+MOVC A,@A+DPTR
+INC R0
+MOV B,@R0
+CJNE A,B, NEXT_DIGIT_B
+MOV R3, #0FFH ; raise the flag since first digit match with the entered customer ids first digit
+
+
+NEXT_DIGIT_B: 
+INC DPTR
+INC R0
+CLR A
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B, NEXT_ID_B
+MOV R4, #0FFH ; raise the flag since second digit match with the entered customer ids second digit
+
+CLR A
+MOV A, R3
+ANL A,R4
+CJNE A, #0FFH,NEXT_ID_B
+MOV R1, #61 ; RAM location of total count of B
+CLR A
+MOV A, @R1 ;Move the total count to acumulator
+
+CJNE A,#20,OPEN_GATE_B
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+OPEN_GATE_B: 
+SUBB A,#1
+MOV @R1,A
+CLR A
+SETB P2.7
+CLR P2.6
+LOOP_20: JB P3.6,lOOP_20
+CLR P2.7
+ACALL DELAY_GATE_OPENING_TIME_B
+SETB P2.6
+LOOP_22: JB P3.7,lOOP_22
+CLR P2.6
+;ACALL DISPLAY SLOTS
+CLR P1.4 ;turn off green bulb
+;ACALL ARRIVAL_TIME_STAMP
+RET
+
+NEXT_ID_B:
+DEC R0
+DEC R0 
+INC DPTR
+DJNZ R3, LOOP5 
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+VEHICLE_TYPE_C:
+INC DPTR
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B,VEHICLE_TYPE_D
+MOV R2,70
+MOV R3,#00H ; a flag register if the first digit is correct
+MOV R4, #00H; a flag register if the second digit is correct
+MOV DPTR, #1300H
+lOOP6:
+CLR A
+MOVC A,@A+DPTR
+INC R0
+MOV B,@R0
+CJNE A,B, NEXT_DIGIT_C
+MOV R3, #0FFH ; raise the flag since first digit match with the entered customer ids first digit
+
+
+NEXT_DIGIT_C: 
+INC DPTR
+INC R0
+CLR A
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B, NEXT_ID_C
+MOV R4, #0FFH ; raise the flag since second digit match with the entered customer ids second digit
+CLR A
+MOV A, R3
+ANL A,R4
+CJNE A, #0FFH,NEXT_ID_C
+MOV R1, #62 ; RAM location of total count of A
+CLR A
+MOV A, @R1 ;Move the total count to acumulator
+
+CJNE A,#60,OPEN_GATE_C
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+OPEN_GATE_C: 
+SUBB A,#1
+MOV @R1,A
+CLR A
+SETB P2.7
+CLR P2.6
+LOOP_30: JB P3.6,lOOP_30
+CLR P2.7
+ACALL DELAY_GATE_OPENING_TIME_C
+SETB P2.6
+LOOP_33: JB P3.7,lOOP_33
+CLR P2.6
+;ACALL DISPLAY SLOTS
+CLR P1.4 ;turn off green bulb
+;ACALL ARRIVAL_TIME_STAMP
+RET
+
+NEXT_ID_C:
+DEC R0
+DEC R0 
+INC DPTR
+DJNZ R4, LOOP6
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+
+VEHICLE_TYPE_D:
+INC DPTR
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B,VEHICLE_TYPE_E
+MOV R2,30
+MOV R3,#00H ; a flag register if the first digit is correct
+MOV R4, #00H; a flag register if the second digit is correct
+MOV DPTR, #1700H
+lOOP7:
+CLR A
+MOVC A,@A+DPTR
+INC R0
+MOV B,@R0
+CJNE A,B, NEXT_DIGIT_D
+MOV R3, #0FFH ; raise the flag since first digit match with the entered customer ids first digit
+
+
+
+NEXT_DIGIT_D: 
+INC DPTR
+INC R0
+CLR A
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B, NEXT_ID_D
+MOV R4, #0FFH ; raise the flag since second digit match with the entered customer ids second digit
+CLR A
+MOV A, R3
+ANL A,R4
+CJNE A, #0FFH,NEXT_ID_D
+
+
+MOV R1, #63 ; RAM location of total count of D
+CLR A
+MOV A, @R1 ;Move the total count to acumulator
+
+CJNE A,#20,OPEN_GATE_D
+ACALL NO_ACCESS_SUBROUTINE
+RET
+OPEN_GATE_D: 
+SUBB A,#1
+MOV @R1,A
+CLR A
+SETB P2.7
+CLR P2.6
+LOOP_40: JB P3.6,lOOP_40
+CLR P2.7
+ACALL DELAY_GATE_OPENING_TIME_D
+SETB P2.6
+LOOP_44: JB P3.7,lOOP_44
+CLR P2.6
+;ACALL DISPLAY SLOTS
+CLR P1.4 ;turn off green bulb
+;ACALL ARRIVAL_TIME_STAMP
+RET
+
+NEXT_ID_D:
+DEC R0
+DEC R0 
+INC DPTR
+DJNZ R6, LOOP7
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+    
+VEHICLE_TYPE_E:
+INC DPTR
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B,NO_ACCESS
+MOV R2,30
+MOV R3,#00H ; a flag register if the first digit is correct
+MOV R4, #00H; a flag register if the second digit is correct
+MOV DPTR, #1800H
+lOOP8:
+CLR A
+MOVC A,@A+DPTR
+INC R0
+MOV B,@R0
+CJNE A,B, NEXT_DIGIT_E
+MOV R3, #0FFH ; raise the flag since first digit match with the entered customer ids first digit
+
+
+NEXT_DIGIT_E: 
+INC DPTR
+INC R0
+CLR A
+MOVC A,@A+DPTR
+MOV B,@R0
+CJNE A,B, NEXT_ID_E
+MOV R4, #0FFH ; raise the flag since second digit match with the entered customer ids second digit
+CLR A
+MOV A, R3
+ANL A,R4
+CJNE A, #0FFH,NEXT_ID_E
+MOV R1, #64 ; RAM location of total count of E
+CLR A
+MOV A, @R1 ;Move the total count to acumulator
+
+CJNE A,#20,OPEN_GATE_E
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+OPEN_GATE_E: 
+SUBB A,#1
+MOV @R1,A
+CLR A
+SETB P2.7
+CLR P2.6
+LOOP_50: JB P3.6,lOOP_50
+CLR P2.7
+ACALL DELAY_GATE_OPENING_TIME_E
+SETB P2.6
+LOOP_55: JB P3.7,lOOP_55
+CLR P2.6
+;ACALL DISPLAY SLOTS
+CLR P1.4 ;turn off green bulb
+;ACALL ARRIVAL_TIME_STAMP
+RET
+NEXT_ID_E:
+DEC R0
+DEC R0 
+INC DPTR
+DJNZ R4, LOOP8
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+NO_ACCESS:
+ACALL NO_ACCESS_SUBROUTINE
+RET
+
+
+
+
+NO_ACCESS_SUBROUTINE:
+ACALL RED_INDICATOR_LIGHT
+ACALL SPEAKER_WARNING_TONE
+LOOP3: JNB P1.0, LOOP3 ; A - loop until the vehicle moves away
+CLR P1.4 ; turn off the red light
+CLR P1.3 ; pause warning tone
+RET
+
+INITIALIZE_NO_SLOTS:
+
+MOV R0,#60  ;RAM locations to store count
+MOV @R0,#40 ; Max slot of A
+INC R0
+MOV @R0,#20 ; Max slot of B
+INC R0
+MOV @R0,#60 ; Max slot of C
+INC R0
+MOV @R0,#20 ; Max slot of D
+INC R0
+MOV @R0,#20 ; Max slot of E
+;ACALL DISPLAY SLOTS
+RET
+DELAY_GATE_OPENING_TIME_A: 
+MOV R3, #70
+L300: MOV R2,#255
+L200: MOV R1,#255
+L100: DJNZ R1,L100
+DJNZ R2,L200
+DJNZ R3,L300
+
+RET
+
+DELAY_GATE_OPENING_TIME_B: 
+MOV R3, #255
+L3000: MOV R2,#255
+L2000: MOV R1,#255
+L1000: DJNZ R1,L1000
+DJNZ R2,L2000
+DJNZ R3,L3000
+
+RET
+DELAY_GATE_OPENING_TIME_C: 
+MOV R3, #210
+L30000: MOV R2,#255
+L20000: MOV R1,#255
+L10000: DJNZ R1,L10000
+DJNZ R2,L20000
+DJNZ R3,L30000
+
+RET
+DELAY_GATE_OPENING_TIME_D: 
+MOV R3, #140
+L300000: MOV R2,#255
+L200000: MOV R1,#255
+L100000: DJNZ R1,L100000
+DJNZ R2,L200000
+DJNZ R3,L300000
+
+RET
+DELAY_GATE_OPENING_TIME_E: 
+MOV R3, #255
+L3000000: MOV R2,#255
+L2000000: MOV R1,#255
+L1000000: DJNZ R1,L1000000
+DJNZ R2,L2000000
+DJNZ R3,L3000000
+
+RET
+
+
+SERIAL_TIMER_START:
+MOV TMOD ,#20H  ; timer1, mode 2, auto-reload
+MOV TH1,#0FDH   ;9600 baud rate
+MOV SCON,#50H   ; 8 bit, 1 stop , REN enabled
+SETB TR1        ; Start timer 1
+RET
+
+
+
+
+
+ORG 1000H
+DATA_VEHICLE_TYPE: 
+DB 'A'
+DB 'B'
+DB 'C'
+DB 'D'
+DB 'E'
+
+
+ORG 1010H
+DATA_A:
+DB '0','1'
+DB '0','2'
+DB '0','3'
+DB '0','4'
+DB '0','5'
+DB '0','6'
+DB '0','7'
+DB '0','8'
+DB '0','9'
+DB '1','0'
+DB '1','1'
+DB '1','2'
+DB '1','3'
+DB '1','4'
+DB '1','5'
+DB '1','6'
+DB '1','7'
+DB '1','8'
+DB '1','9'
+DB '2','0'
+DB '2','1'
+DB '2','2'
+DB '2','3'
+DB '2','4'
+DB '2','5'
+DB '2','6'
+DB '2','7'
+DB '2','8'
+DB '2','9'
+DB '3','0'
+DB '3','1'
+DB '3','2'
+DB '3','3'
+DB '3','4'
+DB '3','5'
+DB '3','6'
+DB '3','7'
+DB '3','8'
+DB '3','9'
+DB '4','0'
+DB '4','1'
+DB '4','2'
+DB '4','3'
+DB '4','4'
+DB '4','5'
+DB '4','6'
+DB '4','7'
+DB '4','8'
+DB '4','9'
+DB '5','0'
+
+ORG 1150H
+DATA_B:
+DB '0','1'
+DB '0','2'
+DB '0','3'
+DB '0','4'
+DB '0','5'
+DB '0','6'
+DB '0','7'
+DB '0','8'
+DB '0','9'
+DB '1','0'
+DB '1','1'
+DB '1','2'
+DB '1','3'
+DB '1','4'
+DB '1','5'
+DB '1','6'
+DB '1','7'
+DB '1','8'
+DB '1','9'
+DB '2','0'
+DB '2','1'
+DB '2','2'
+DB '2','3'
+DB '2','4'
+DB '2','5'
+DB '2','6'
+DB '2','7'
+DB '2','8'
+DB '2','9'
+DB '3','0'
+
+ORG 1300H
+DATA_C:
+DB '0','1'
+DB '0','2'
+DB '0','3'
+DB '0','4'
+DB '0','5'
+DB '0','6'
+DB '0','7'
+DB '0','8'
+DB '0','9'
+DB '1','0'
+DB '1','1'
+DB '1','2'
+DB '1','3'
+DB '1','4'
+DB '1','5'
+DB '1','6'
+DB '1','7'
+DB '1','8'
+DB '1','9'
+DB '2','0'
+DB '2','1'
+DB '2','2'
+DB '2','3'
+DB '2','4'
+DB '2','5'
+DB '2','6'
+DB '2','7'
+DB '2','8'
+DB '2','9'
+DB '3','0'
+DB '3','1'
+DB '3','2'
+DB '3','3'
+DB '3','4'
+DB '3','5'
+DB '3','6'
+DB '3','7'
+DB '3','8'
+DB '3','9'
+DB '4','0'
+DB '4','1'
+DB '4','2'
+DB '4','3'
+DB '4','4'
+DB '4','5'
+DB '4','6'
+DB '4','7'
+DB '4','8'
+DB '4','9'
+DB '5','0'
+DB '5','1'
+DB '5','2'
+DB '5','3'
+DB '5','4'
+DB '5','5'
+DB '5','6'
+DB '5','7'
+DB '5','8'
+DB '5','9'
+DB '6','0'
+DB '6','1'
+DB '6','2'
+DB '6','3'
+DB '6','4'
+DB '6','5'
+DB '6','6'
+DB '6','7'
+DB '6','8'
+DB '6','9'
+DB '7','0'
+
+
+ORG 1700H
+DATA_D:
+DB '0','1'
+DB '0','2'
+DB '0','3'
+DB '0','4'
+DB '0','5'
+DB '0','6'
+DB '0','7'
+DB '0','8'
+DB '0','9'
+DB '1','0'
+DB '1','1'
+DB '1','2'
+DB '1','3'
+DB '1','4'
+DB '1','5'
+DB '1','6'
+DB '1','7'
+DB '1','8'
+DB '1','9'
+DB '2','0'
+DB '2','1'
+DB '2','2'
+DB '2','3'
+DB '2','4'
+DB '2','5'
+DB '2','6'
+DB '2','7'
+DB '2','8'
+DB '2','9'
+DB '3','0'
+ORG 1800H
+DATA_E:
+DB '0','1'
+DB '0','2'
+DB '0','3'
+DB '0','4'
+DB '0','5'
+DB '0','6'
+DB '0','7'
+DB '0','8'
+DB '0','9'
+DB '1','0'
+DB '1','1'
+DB '1','2'
+DB '1','3'
+DB '1','4'
+DB '1','5'
+DB '1','6'
+DB '1','7'
+DB '1','8'
+DB '1','9'
+DB '2','0'
+DB '2','1'
+DB '2','2'
+DB '2','3'
+DB '2','4'
+DB '2','5'
+DB '2','6'
+DB '2','7'
+DB '2','8'
+DB '2','9'
+DB '3','0'
+END
+
+
+
+
+
+
+
+
+
+
+
+
